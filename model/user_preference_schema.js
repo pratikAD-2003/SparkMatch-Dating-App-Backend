@@ -12,6 +12,11 @@ const userPreferencesSchema = mongoose.Schema(
                 type: String,
             },
         ],
+        gallery: [
+            {
+                type: String
+            }
+        ],
         languages: [
             {
                 type: String,
@@ -50,4 +55,4 @@ const userPreferencesSchema = mongoose.Schema(
 
 userPreferencesSchema.index({ location: "2dsphere" });
 
-moduel.exports = mongoose.model("UserPreferences", userPreferencesSchema);
+module.exports = mongoose.model("UserPreferences", userPreferencesSchema);

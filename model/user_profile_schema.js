@@ -11,6 +11,10 @@ const userProfileSchema = mongoose.Schema(
       type: String,
       required: true,
     },
+    profession: {
+      type: String,
+      required: true,
+    },
     dateOfBirth: {
       type: Date,
       required: true,
