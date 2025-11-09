@@ -1,9 +1,19 @@
 const express = require("express");
 const router = express.Router();
-const { uploadStory, getAllStories, viewStory } = require("../controller/story_controller");
+const parser = require('../middleware/upload');
 
-router.post("/", uploadStory);
-router.get("/", getAllStories);
-router.post("/view", viewStory);
+const { uploadStory, getStories, deleteStory, getUserStoriesById, viewStory, getViewedStoryUsers } = require("../controller/story_controller");
+
+router.post("/uploadStory", parser.single('storyImg'), uploadStory);
+
+router.post("/viewStory", viewStory);
+
+router.get("/getStories", getStories);
+
+router.get("/getUserStoriesById", getUserStoriesById);
+
+router.get("/getViewedStoryUsers", getViewedStoryUsers);
+
+router.delete("/deleteStory", deleteStory);
 
 module.exports = router;
