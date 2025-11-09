@@ -12,7 +12,7 @@ route.post('/signup', signup);
 route.post('/verifyOtpForSignup', verifyEmail);
 route.post('/googleAuth', googleAuth);
 route.post('/resetOtp', resetOtp);
-route.post('resetPassword', resetPassword);
+route.post('/resetPassword', resetPassword);
 route.post('/sendOtpForResetPassword', sendOtpForResetPassword);
 route.post('/verifyEmailForResetPassword', verifyEmailForResetPassword);
 route.put('/changePassword', changePassword);

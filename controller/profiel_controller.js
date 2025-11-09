@@ -1,5 +1,6 @@
 const mongoose = require("mongoose");
 const UserProfile = require("../model/user_profile_schema");
+const UserAuth = require("../model/user_auth_schema");
 
 const updateProfileDetails = async (req, res) => {
     try {
@@ -26,6 +27,8 @@ const updateProfileDetails = async (req, res) => {
             updateData,
             { new: true, upsert: true }
         );
+        // ✅ Also mark user as updated in UserAuth
+        await UserAuth.findByIdAndUpdate(userId, { isUpdated: true });
 
         return res.status(200).json({
             message: "Profile updated successfully",
