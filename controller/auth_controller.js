@@ -3,6 +3,8 @@ require("dotenv").config();
 const bcrypt = require("bcrypt");
 const mongoose = require("mongoose");
 const UserAuth = require("../model/user_auth_schema");
+const UserProfile = require("../model/user_profile_schema");
+const UserPreferences = require("../model/user_preference_schema");
 const nodemailer = require("nodemailer");
 const jwt = require("jsonwebtoken");
 const { OAuth2Client } = require("google-auth-library");
@@ -65,19 +67,19 @@ const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 // -------------------- HELPERS --------------------
 async function sendMail({ to, subject, html, text }) {
-  try {
-    const info = await transporter.sendMail({
-      from: `"Samsara Adventures" <${process.env.EMAIL}>`,
-      to,
-      subject,
-      html,
-      text,
-    });
-    return { ok: true, info };
-  } catch (err) {
-    console.error("Error sending email:", err);
-    return { ok: false, error: err };
-  }
+    try {
+        const info = await transporter.sendMail({
+            from: `"SparkMatch" <${process.env.EMAIL}>`,
+            to,
+            subject,
+            html,
+            text,
+        });
+        return { ok: true, info };
+    } catch (err) {
+        console.error("Error sending email:", err);
+        return { ok: false, error: err };
+    }
 }
 
 
@@ -110,9 +112,21 @@ const googleAuth = async (req, res) => {
             { expiresIn: "7d" }
         );
 
+        const [profileExists, prefExists] = await Promise.all([
+            UserProfile.exists({ userId: user._id }),
+            UserPreferences.exists({ userId: user._id }),
+        ]);
+
+        const isProfileUpdated = !!profileExists;
+        const isPreferenceUpdated = !!prefExists;
+
+
         return res.status(200).json({
             token: jwtToken,
-            user,
+            email: user.email,
+            userId: user._id,
+            isProfileUpdated,
+            isPreferenceUpdated,
         });
     } catch (err) {
         console.error("Google Auth Error:", err);
@@ -187,10 +201,22 @@ const verifyEmail = async (req, res) => {
             { expiresIn: "7d" }
         );
 
+        const [profileExists, prefExists] = await Promise.all([
+            UserProfile.exists({ userId: newUser._id }),
+            UserPreferences.exists({ userId: newUser._id }),
+        ]);
+
+        const isProfileUpdated = !!profileExists;
+        const isPreferenceUpdated = !!prefExists;
+
+
         return res.status(201).json({
             message: "Account created successfully!",
             token,
-            user: { id: newUser._id, email: newUser.email },
+            email: newUser.email,
+            userId: newUser._id,
+            isProfileUpdated,
+            isPreferenceUpdated,
         });
     } catch (err) {
         console.error("Verify Email Error:", err);
@@ -214,7 +240,23 @@ const login = async (req, res) => {
             { expiresIn: "7d" }
         );
 
-        return res.status(200).json({ token, user });
+        const [profileExists, prefExists] = await Promise.all([
+            UserProfile.exists({ userId: user._id }),
+            UserPreferences.exists({ userId: user._id }),
+        ]);
+
+        const isProfileUpdated = !!profileExists;
+        const isPreferenceUpdated = !!prefExists;
+
+        return res.status(200).json({
+            message: "Logged in successfully.",
+            token,
+            email: user.email,
+            userId: user._id,
+            isProfileUpdated,
+            isPreferenceUpdated,
+        });
+
     } catch (err) {
         console.error("Login Error:", err);
         return res.status(500).json({ message: "Login failed." });
@@ -326,6 +368,33 @@ const resetOtp = async (req, res) => {
     }
 };
 
+const getUserDetails = async (req, res) => {
+    try {
+        const { userId } = req.params;
+
+        // Fetch profile and preferences in parallel for speed
+        const [profile, preferences] = await Promise.all([
+            UserProfile.findOne({ userId }),
+            UserPreferences.findOne({ userId }),
+        ]);
+
+        // Combine and respond
+        return res.status(200).json({
+            success: true,
+            data: {
+                profile,
+                preferences,
+            },
+        });
+    } catch (error) {
+        console.error("❌ Error fetching user details:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Internal Server Error",
+        });
+    }
+};
+
 module.exports = {
     signup,
     verifyEmail,
@@ -336,4 +405,5 @@ module.exports = {
     resetPassword,
     resetOtp,
     googleAuth,
+    getUserDetails
 };
