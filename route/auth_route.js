@@ -4,7 +4,7 @@ const parser = require('../middleware/upload');
 
 const { login, signup, verifyEmail, googleAuth, resetOtp, resetPassword, sendOtpForResetPassword, verifyEmailForResetPassword, changePassword, getUserDetails } = require('../controller/auth_controller')
 const { updateProfileDetails } = require('../controller/profiel_controller');
-const { updateUserPreference } = require('../controller/preference_controller');
+const { updateUserPreference, updateInterests, updateLanguages } = require('../controller/preference_controller');
 
 // Auth Related Api's
 route.post('/login', login);
@@ -16,12 +16,14 @@ route.post('/resetPassword', resetPassword);
 route.post('/sendOtpForResetPassword', sendOtpForResetPassword);
 route.post('/verifyEmailForResetPassword', verifyEmailForResetPassword);
 route.put('/changePassword', changePassword);
-route.get('/getUserDetails/:userId',getUserDetails);
+route.get('/getUserDetails/:userId', getUserDetails);
 
 // Profile Related Api's
 route.put('/updateProfile', parser.single('profilePhotoUrl'), updateProfileDetails);
 
 // Profile Preference Api's
 route.put('/updateUserPreferences', parser.fields([{ name: "images", maxCount: 5 }]), updateUserPreference);
+route.put('/updateInterests', updateInterests);
+route.put('/updateLanguages', updateLanguages);
 
 module.exports = route;

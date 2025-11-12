@@ -51,4 +51,58 @@ const updateUserPreference = async (req, res) => {
     }
 };
 
-module.exports = { updateUserPreference };
+// ------------------ Update Interests ------------------
+const updateInterests = async (req, res) => {
+    try {
+        const { userId, interests } = req.body;
+
+        if (!interests || !Array.isArray(interests)) {
+            return res.status(400).json({ message: "Interests must be an array of strings." });
+        }
+
+        const updated = await UserPreferences.findOneAndUpdate(
+            { userId },
+            { interests },
+            { new: true, upsert: true } // create if not exists
+        );
+
+        return res.status(200).json({
+            message: "Interests updated successfully",
+            data: updated.interests, // only languages
+        });
+    } catch (err) {
+        console.error("Error updating interests:", err);
+        return res.status(500).json({ message: "Failed to update interests." });
+    }
+};
+
+// ------------------ Update Languages ------------------
+const updateLanguages = async (req, res) => {
+    try {
+        const { userId, languages } = req.body;
+
+        if (!languages || !Array.isArray(languages)) {
+            return res.status(400).json({ message: "Languages must be an array of strings." });
+        }
+
+        const updated = await UserPreferences.findOneAndUpdate(
+            { userId },
+            { languages },
+            { new: true, upsert: true } // create if not exists
+        );
+
+        return res.status(200).json({
+            message: "Languages updated successfully",
+            data: updated.languages,
+        });
+    } catch (err) {
+        console.error("Error updating languages:", err);
+        return res.status(500).json({ message: "Failed to update languages." });
+    }
+};
+
+module.exports = {
+    updateUserPreference,
+    updateInterests,
+    updateLanguages,
+};
