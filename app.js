@@ -25,15 +25,11 @@ mongoose
 
 const userAuth = require('./route/auth_route')
 const userDetail = require('./route/user_route')
-const chats = require('./route/chat_route')
-const messages = require('./route/message_route')
-const stories = require('./route/story_route')
+const story = require('./route/story_route')
 
 app.use('/api/user/auth', userAuth);
 app.use("/api/user/item", userDetail);
-app.use("/api/user/chat", chats);
-app.use("/api/user/messages", messages);
-app.use("/api/user/stories", stories);
+app.use("/api/user/stories", story);
 
 app.get('/', (req, res) => {
     res.send("Server Working ✅");

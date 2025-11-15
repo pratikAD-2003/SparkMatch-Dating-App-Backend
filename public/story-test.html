@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Stories Test</title>
+    <style>
+        body {
+            font-family: Arial;
+            padding: 20px;
+        }
+
+        .story {
+            border: 1px solid #ccc;
+            padding: 10px;
+            margin-bottom: 10px;
+        }
+
+        .seen {
+            background-color: #f0f0f0;
+        }
+    </style>
+</head>
+
+<body>
+
+    <h1>Stories Test</h1>
+
+    <!-- User ID input -->
+    <input type="text" id="userId" placeholder="Enter your MongoDB User ID" />
+    <button id="connectBtn">Load Stories</button>
+
+    <h2>Upload Story</h2>
+    <input type="file" id="storyFile" />
+    <button id="uploadBtn">Upload Story</button>
+
+    <h2>Stories</h2>
+    <div id="storiesContainer"></div>
+
+    <script>
+        let currentUserId = null;
+        const storiesContainer = document.getElementById("storiesContainer");
+
+        // Load stories
+        document.getElementById("connectBtn").addEventListener("click", async () => {
+            currentUserId = document.getElementById("userId").value.trim();
+            if (!currentUserId) return alert("Enter a valid MongoDB User ID");
+            await loadStories();
+        });
+
+        // Upload story
+        document.getElementById("uploadBtn").addEventListener("click", async () => {
+            if (!currentUserId) return alert("Enter your User ID first");
+            const fileInput = document.getElementById("storyFile");
+            if (!fileInput.files[0]) return alert("Select a file");
+
+            const formData = new FormData();
+            formData.append("userId", currentUserId);
+            formData.append("storyImageUrl", fileInput.files[0]);
+
+            const res = await fetch(`http://localhost:5235/api/user/stories/uploadStory`, {
+                method: "POST",
+                body: formData
+            });
+            const data = await res.json();
+            if (data.success) {
+                console.log("Story uploaded:", data.story);
+                fileInput.value = "";
+                addOrUpdateStory(data.story); // Add new story directly
+            }
+        });
+
+        // Load stories from backend
+        async function loadStories() {
+            const res = await fetch(`http://localhost:5235/api/user/stories/getStories/${currentUserId}`);
+            const data = await res.json();
+            if (data.success) renderStories(data.stories);
+        }
+
+        // Render all stories
+        function renderStories(stories) {
+            storiesContainer.innerHTML = "";
+            stories.forEach(story => addOrUpdateStory(story));
+        }
+
+        function addOrUpdateStory(story) {
+            let existing = document.getElementById(`story-${story.storyId}`);
+            const div = document.createElement("div");
+            div.className = `story ${story.isSeen ? "seen" : ""}`;
+            div.id = `story-${story.storyId}`;
+
+            const displayName = story.userId === currentUserId ? "You" : story.fullName;
+            const uploadedTime = story.createdAt
+                ? new Date(story.createdAt).toLocaleString()
+                : "Unknown";
+
+            div.innerHTML = `
+                <div style="display:flex; align-items:center; gap:10px;">
+                  <img src="${story.profilePhotoUrl}" width="50" height="50" style="border-radius:50%;" />
+                  <b>${displayName}</b>
+                </div>
+                <div style="margin-top:10px;">
+                  <img src="${story.storyImageUrl}" width="200" />
+                </div>
+                <div style="margin-top:5px;">
+                  Uploaded: ${uploadedTime} <br>
+                  Seen: <span id="seen-${story.storyId}">${story.isSeen}</span>
+                </div>
+                <button style="margin-top:5px;" onclick="markSeen('${story.storyId}')">Mark Seen</button>
+            `;
+
+            if (existing) {
+                storiesContainer.replaceChild(div, existing);
+            } else {
+                if (story.userId === currentUserId) {
+                    storiesContainer.prepend(div);
+                } else {
+                    storiesContainer.appendChild(div);
+                }
+            }
+        }
+
+        // Mark story as seen
+        async function markSeen(storyId) {
+            if (!currentUserId) return;
+            try {
+                const res = await fetch(`http://localhost:5235/api/user/stories/markStorySeen`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ storyId, userId: currentUserId })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    // Update UI without reloading all stories
+                    const seenSpan = document.getElementById(`seen-${storyId}`);
+                    const storyDiv = document.getElementById(`story-${storyId}`);
+                    if (seenSpan) seenSpan.textContent = "true";
+                    if (storyDiv) storyDiv.classList.add("seen");
+                }
+            } catch (err) {
+                console.error("Failed to mark seen:", err);
+            }
+        }
+    </script>
+
+</body>
+
+</html>

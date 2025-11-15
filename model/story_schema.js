@@ -1,31 +1,28 @@
-const mongoose = require("mongoose");
+const mongoose = require('mongoose');
 
-const storySchema = new mongoose.Schema(
-    {
-        userId: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: "User",
-            required: true,
-            index: true,
-        },
-        mediaUrl: {
-            type: String,
-            required: true,
-            trim: true,
-        },
-        viewedBy: [
-            {
-                userId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
-                viewedAt: { type: Date, default: Date.now },
-            },
-        ],
+const storySchema = mongoose.Schema(
+  {
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "UserAuth",
+      required: true,
     },
-    {
-        timestamps: true,
+    storyImageUrl: {
+      type: String,
+      required: true,
+    },
+    seenBy: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "UserAuth",
+      }
+    ],
+    expiresAt: {
+      type: Date,
+      default: () => new Date(+new Date() + 24*60*60*1000) // optional: auto expire after 24h
     }
+  },
+  { timestamps: true }
 );
-
-// 🕒 Automatically delete stories after 24 hours
-storySchema.index({ createdAt: 1 }, { expireAfterSeconds: 86400 });
 
 module.exports = mongoose.model("Story", storySchema);

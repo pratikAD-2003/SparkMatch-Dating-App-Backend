@@ -1,203 +1,138 @@
 const Story = require("../model/story_schema");
 const UserProfile = require("../model/user_profile_schema");
-const cloudinary = require("../cloudinary"); // your cloudinary config
+const mongoose = require("mongoose");
 
-// Upload a story
-exports.uploadStory = async (req, res) => {
+// We'll store io globally here for emitting
+let ioInstance = null;
+const setSocketIO = (io) => {
+    ioInstance = io;
+};
+
+// Upload story
+const uploadStory = async (req, res) => {
     try {
-        const { userId } = req.body;
+        const { userId } = req.body;  // userId = UserAuth _id
+        const storyImageUrl = req.file.path;
 
-        if (!userId) {
-            return res.status(400).json({ success: false, message: "userId is required" });
+        if (!userId || !storyImageUrl) {
+            return res.status(400).json({ success: false, message: "UserId and storyImage required" });
         }
 
-        if (!req.file || !req.file.path) {
-            return res.status(400).json({ success: false, message: "Story media is required" });
-        }
+        // Create story
+        const story = await Story.create({ userId, storyImageUrl });
 
-        const newStory = await Story.create({
-            userId,
-            mediaUrl: req.file.path,
-        });
+        // Get user profile
+        const userProfile = await UserProfile.findOne({ userId });
 
+        // Return story with user info
         res.status(201).json({
             success: true,
-            message: "Story uploaded successfully",
-            story: newStory,
-        });
-    } catch (error) {
-        console.error("Upload story error:", error);
-        res.status(500).json({ success: false, message: "Internal server error", error: error.message });
-    }
-};
-
-
-exports.getStories = async (req, res) => {
-    try {
-        const { userId } = req.query; // current logged-in user
-
-        if (!userId) {
-            return res.status(400).json({ success: false, message: "userId is required" });
-        }
-
-        // Fetch all stories, latest first
-        const stories = await Story.find()
-            .sort({ createdAt: -1 })
-            .lean();
-
-        // Map to store latest story per user
-        const uniqueStoriesMap = new Map();
-
-        stories.forEach(story => {
-            const uid = story.userId.toString();
-            if (!uniqueStoriesMap.has(uid)) {
-                uniqueStoriesMap.set(uid, story);
+            story: {
+                storyId: story._id,
+                userId,
+                fullName: userProfile?.fullName || "Unknown",
+                profilePhotoUrl: userProfile?.profilePhotoUrl || "",
+                storyImageUrl: story.storyImageUrl,
+                isSeen: false,  // default
+                createdAt: story.createdAt
             }
         });
-
-        const uniqueStories = Array.from(uniqueStoriesMap.values());
-
-        // Fetch user profiles
-        const userIds = uniqueStories.map(story => story.userId);
-        const profiles = await UserProfile.find({ userId: { $in: userIds } }).lean();
-
-        // Prepare final response
-        const response = uniqueStories.map(story => {
-            const profile = profiles.find(p => p.userId.toString() === story.userId.toString());
-            const isSeen = story.viewedBy.some(v => v.userId?.toString() === userId.toString());
-
-            return {
-                storyId: story._id,
-                fullName: profile?.fullName || "",
-                profilePhotoUrl: profile?.profilePhotoUrl || "",
-                isSeen,
-            };
-        });
-
-        // Put current user's story first if exists
-        const myStoryIndex = response.findIndex(s => s.storyId.toString() === userId.toString());
-        if (myStoryIndex > -1) {
-            const [myStory] = response.splice(myStoryIndex, 1);
-            response.unshift(myStory);
-        }
-
-        res.status(200).json({
-            success: true,
-            count: response.length,
-            stories: response,
-        });
-    } catch (error) {
-        console.error("Error fetching stories:", error);
-        res.status(500).json({
-            success: false,
-            message: "Internal server error",
-            error: error.message,
-        });
-    }
-};
-
-// Helper to extract Cloudinary public ID from URL
-function extractPublicId(imageUrl) {
-    try {
-        if (!imageUrl) return null;
-
-        const parts = imageUrl.split("/upload/");
-        if (parts.length < 2) return null;
-
-        const publicIdWithExt = parts[1]; // everything after /upload/
-        const publicId = publicIdWithExt.replace(/\.[^/.]+$/, ""); // remove extension
-        return publicId;
     } catch (err) {
-        console.error("Error extracting publicId:", err.message);
-        return null;
-    }
-}
-
-exports.deleteStory = async (req, res) => {
-    try {
-        const { storyId, userId } = req.body;
-
-        if (!storyId || !userId) {
-            return res.status(400).json({ success: false, message: "storyId and userId are required" });
-        }
-
-        const story = await Story.findById(storyId);
-
-        if (!story) {
-            return res.status(404).json({ success: false, message: "Story not found" });
-        }
-
-        if (story.userId.toString() !== userId.toString()) {
-            return res.status(403).json({ success: false, message: "Not authorized to delete this story" });
-        }
-
-        // Extract public ID and delete from Cloudinary
-        const publicId = extractPublicId(story.mediaUrl);
-        if (publicId) {
-            await cloudinary.uploader.destroy(publicId);
-        }
-
-        // Delete story from MongoDB
-        await Story.findByIdAndDelete(storyId);
-
-        res.status(200).json({ success: true, message: "Story deleted successfully" });
-    } catch (error) {
-        console.error("Delete story error:", error);
-        res.status(500).json({ success: false, message: "Internal server error", error: error.message });
+        console.error(err);
+        res.status(500).json({ success: false, message: "Failed to upload story" });
     }
 };
 
 
-// Mark a story as viewed
-exports.viewStory = async (req, res) => {
+const getStories = async (req, res) => {
     try {
-        const { storyId, userId } = req.body;
-
-        if (!storyId || !userId) {
-            return res.status(400).json({ success: false, message: "storyId and userId are required" });
+        const viewerIdStr = req.params.userId; // string
+        if (!mongoose.Types.ObjectId.isValid(viewerIdStr)) {
+            return res.status(400).json({ success: false, message: "Invalid userId" });
         }
+        const viewerId = new mongoose.Types.ObjectId(viewerIdStr); // convert to ObjectId
 
-        const story = await Story.findById(storyId);
+        // Get all stories
+        const stories = await Story.find().sort({ createdAt: -1 }).lean();
 
-        if (!story) {
-            return res.status(404).json({ success: false, message: "Story not found" });
-        }
+        // Map stories with user info and isSeen status
+        const formattedStories = await Promise.all(
+            stories.map(async (story) => {
+                const userProfile = await UserProfile.findOne({ userId: story.userId });
 
-        // Only add if not already viewed
-        const alreadyViewed = story.viewedBy.some(v => v.userId?.toString() === userId.toString());
+                // Check if viewer has seen this story
+                const isSeen = story.seenBy?.some(id => id.equals(viewerId)) || false;
 
-        if (!alreadyViewed) {
-            story.viewedBy.push({ userId, viewedAt: new Date() });
-            await story.save();
-        }
+                return {
+                    storyId: story._id,
+                    userId: story.userId,
+                    fullName: userProfile?.fullName || "Unknown",
+                    profilePhotoUrl: userProfile?.profilePhotoUrl || "",
+                    storyImageUrl: story.storyImageUrl,
+                    isSeen,
+                    createdAt: story.createdAt
+                };
+            })
+        );
 
-        res.status(200).json({
-            success: true,
-            message: "Story viewed successfully",
-            views: story.viewedBy.length, // current total unique views
-        });
-    } catch (error) {
-        console.error("View story error:", error);
-        res.status(500).json({ success: false, message: "Internal server error", error: error.message });
+        res.json({ success: true, stories: formattedStories });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ success: false, message: "Failed to fetch stories" });
     }
 };
 
-exports.getUserStoriesById = async (req, res) => {
+const markStorySeen = async (req, res) => {
     try {
-        const { userId } = req.query; // userId = whose stories we want, viewerId = current logged-in
+        let { storyId, userId } = req.body;
+
+        if (!mongoose.Types.ObjectId.isValid(storyId) || !mongoose.Types.ObjectId.isValid(userId)) {
+            return res.status(400).json({ success: false, message: "Invalid storyId or userId" });
+        }
+
+        storyId = new mongoose.Types.ObjectId(storyId);
+        userId = new mongoose.Types.ObjectId(userId);
+
+        const story = await Story.findByIdAndUpdate(
+            storyId,
+            { $addToSet: { seenBy: userId } },
+            { new: true }
+        ).populate("userId", "fullName profilePhotoUrl");
+
+        if (!story) return res.status(404).json({ success: false, message: "Story not found" });
+
+        const storyData = {
+            storyId: story._id,
+            userId: story.userId._id,
+            fullName: story.userId.fullName,
+            profilePhotoUrl: story.userId.profilePhotoUrl,
+            storyImageUrl: story.storyImageUrl,
+            isSeen: story.seenBy.includes(userId),
+        };
+
+        // Emit real-time update
+        if (ioInstance) ioInstance.emit("storySeenUpdate", storyData);
+
+        res.json({ success: true, story: storyData });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ success: false, message: "Failed to mark story as seen", error: err.message });
+    }
+};
+
+
+const getUserStoriesById = async (req, res) => {
+    try {
+        const { userId, viewerId } = req.query; // viewerId = current logged-in user who is viewing the story
 
         if (!userId) {
             return res.status(400).json({ success: false, message: "userId is required" });
         }
 
-        // Fetch stories for the specific user
+        // Fetch all stories for the given user
         const stories = await Story.find({ userId })
             .sort({ createdAt: -1 })
             .lean();
-
-        if (!stories.length) {
-            return res.status(404).json({ success: false, message: "No stories found for this user" });
-        }
 
         // Fetch user profile
         const profile = await UserProfile.findOne({ userId }).lean();
@@ -209,8 +144,9 @@ exports.getUserStoriesById = async (req, res) => {
             profilePhotoUrl: profile?.profilePhotoUrl || "",
             stories: stories.map(story => ({
                 storyId: story._id,
-                mediaUrl: story.mediaUrl,
-                createdAt: story.createdAt
+                mediaUrl: story.storyImageUrl, // field from your schema
+                createdAt: story.createdAt,
+                isSeen: story.seenBy?.includes(viewerId) || false, // check if current viewer has seen it
             })),
         };
 
@@ -222,48 +158,10 @@ exports.getUserStoriesById = async (req, res) => {
 };
 
 
-exports.getViewedStoryUsers = async (req, res) => {
-    try {
-        const { storyId } = req.query; // storyId passed in query or body
-
-        if (!storyId) {
-            return res.status(400).json({ success: false, message: "storyId is required" });
-        }
-
-        // Fetch the story with viewedBy
-        const story = await Story.findById(storyId).lean();
-
-        if (!story) {
-            return res.status(404).json({ success: false, message: "Story not found" });
-        }
-
-        // Get all userIds who viewed the story
-        const viewedUserIds = story.viewedBy.map(v => v.userId);
-
-        if (!viewedUserIds.length) {
-            return res.status(200).json({ success: true, users: [] });
-        }
-
-        // Fetch user profiles
-        const profiles = await UserProfile.find({ userId: { $in: viewedUserIds } }).lean();
-
-        // Prepare response with name, profilePhoto, and viewedAt
-        const response = story.viewedBy.map(v => {
-            const profile = profiles.find(p => p.userId.toString() === v.userId.toString());
-            return {
-                fullName: profile?.fullName || "",
-                profilePhotoUrl: profile?.profilePhotoUrl || "",
-                viewedAt: v.viewedAt,
-            };
-        });
-
-        res.status(200).json({ success: true, users: response });
-    } catch (error) {
-        console.error("Error fetching viewed users:", error);
-        res.status(500).json({
-            success: false,
-            message: "Internal server error",
-            error: error.message,
-        });
-    }
+module.exports = {
+    uploadStory,
+    getStories,
+    markStorySeen,
+    setSocketIO,
+    getUserStoriesById
 };
